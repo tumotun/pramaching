@@ -1,0 +1,150 @@
+---
+title: "Practical Machine Learning Project"
+author: "Guangsheng Liang"
+date: "July 25, 2014"
+output: html_document
+---
+## Background 
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Date Preprocessing
+
+### 1. Download the data
+
+```{r download, echo=FALSE}
+if (!file.exists("~/Desktop/project package")) {
+  dir.create('~/Desktop/project package')
+}
+
+setwd('~/Desktop/project package')
+
+if (!file.exists("training.csv")) {
+  url.train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+  download.file(url.train, destfile = './training.csv', method = "curl")
+}
+
+if (!file.exists("testing.csv")) {
+  url.test <- 'https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv'
+  download.file(url.test, destfile = './testing.csv', method = "curl")
+}
+```
+
+Now there are two csv file in our directory.
+```{r show data}
+dir('~/Desktop/project package')
+```
+
+### 2. Load the data and require packages
+```{r loading file, cache=TRUE}
+setwd('~/Desktop/project package')
+training <- read.csv("training.csv", na.strings = c("#DIV/0!",""))
+testing <- read.csv("testing.csv", na.strings = c("#DIV/0!",""))
+library(caret)
+```
+
+Now the training and testing file are in the global enviornment.
+```{r check}
+ls()
+```
+
+### 3. Train data partition
+```{r partition, echo=FALSE}
+set.seed(12)
+in.train <- createDataPartition(training$classe, p = 0.6)[[1]]
+train <- training[in.train,]
+test <- training[-in.train,]
+```
+
+We cut off the training data into two parts: 60% of the data for training, and 40% of the data for testing our model.
+```{r check partition}
+dim(train); dim(test)
+```
+
+Let's see how many predictors are there in the data.
+```{r dim}
+dim(train)
+```
+
+### 4. Cleaning the data  
+
+As we seen, there are too many variables in the data, which will cause overfitting and slow down the speed of machine learning.  
+Thus, we need to find out which variables should be exclude from our model. Simply screening data, we find there are variables that are just for description and some simple statistical measurements. The description variables do no help to the model fiting, and the statistical measurements highly correlate with other original measurements, which will cause confounding. So We want to exclude all these variables from our data.
+
+```{r cleaning data, echo=FALSE}
+dum.0 <- match(c("X","user_name","raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window","num_window"), colnames(train))
+dum.1 <- grep("^kurtosis_", names(train))
+dum.2 <- grep("^skewness_", names(train))
+dum.3 <- grep("^max_", names(train))
+dum.4 <- grep("^min_", names(train))
+dum.5 <- grep("^amplitude_", names(train))
+dum.6 <- grep("^var_", names(train))
+dum.7 <- grep("^avg_", names(train))
+dum.8 <- grep("^stddev_", names(train))
+
+dum <- sort(unique(c(dum.0, dum.1,dum.2, dum.3, dum.4, dum.5, dum.6, dum.7, dum.8)))
+train.pre <- train[, -dum]
+```
+
+```{r clean check}
+dim(train.pre)
+```
+
+We now lower down our predictors to only 52 ('classe' is our ourcome). 
+
+### 5. Lower down predictors  
+
+We now have 52 predictors, but that is not less enough. To keep lowering down the predictor number, We can run 'nearZeroVar' to find out variables that have few unique values relative to the data. We set a threshold 10% to cut off.
+
+```{r nearzero, echo=FALSE}
+thr <- nearZeroVar(train.pre[,-53], saveMetrics = TRUE)
+tar.names <- rownames(thr[thr$percentUnique >10,])
+tar.num <- match(tar.names, names(train.pre))
+train.tar <- train.pre[, c(tar.num, 53)]
+```
+
+```{r final check}
+dim(train.tar)
+names(train.tar)
+```
+
+Now we have 16 variables, and I think it is good enough to use them to fit into the model.
+
+### 6. Model fitting
+
+Random forest has the highest accuarcy and the longest calculation time among the methods we learned. Since we have lowered down the predictors to 16, it won't cost too much time and we can get a highest precdiction.
+
+```{r model build up, echo=FALSE, cache=TRUE}
+fit.nf <- train(classe ~., train.tar, method= "rf")
+```
+
+```{r final model}
+fit.nf$finalModel
+varImp(fit.nf$finalModel)
+plot(fit.nf$finalModel, main = "Random Forest for 16 predictors")
+```
+
+### 7. Test our model
+
+We do the same screening for our testing data, and test the model prediction accuarcy.
+```{r testing cleaning, echo=FALSE}
+test.pre <- test[,-dum]
+test.tar <- test.pre[, c(tar.num,53)]
+testmodel <- confusionMatrix(data = test.tar$classe, reference = predict(fit.nf, test.tar))
+```
+
+```{r test model check}
+testmodel
+```
+
+The test model shows that our model has a 98.7% accuarcy to predict the classe, which is fairly high enough.
+
+## Summary
+
+We use the random forest to build up a model, which has a 98% accuarcy to predict the action class. 
+
+
+
+
+
+
